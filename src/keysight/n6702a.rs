@@ -1,7 +1,10 @@
+use std::io::{BufRead, BufReader, Read, Write};
+
 /// A Keysight N6702A power supply
 pub struct N6702a {
     pub channels: Vec<Channel>,
     pub status: Status,
+    pub instrument: visa_rs::Instrument,
 }
 
 /// The status of the power supply
@@ -26,13 +29,9 @@ pub struct Channel {
     /// Whether the channel's output is currently enabled.
     pub output: bool,
 }
-impl Default for N6702a {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+
 impl N6702a {
-    pub fn new() -> N6702a {
+    pub fn new(instrument: visa_rs::Instrument) -> N6702a {
         let mut channels = Vec::new();
         for i in 1..=4 {
             channels.push(Channel {
@@ -45,7 +44,14 @@ impl N6702a {
         N6702a {
             channels,
             status: Status::Off,
+            instrument,
         }
+    }
+    pub fn get_identification(&mut self) -> String {
+        self.instrument.write_all(b"*IDN?").unwrap();
+        let mut buf_reader = BufReader::new(&self.instrument);
+        let mut buf = String::new();
+        buf_reader.read_line(&mut buf).unwrap().to_string()
     }
 }
 
@@ -75,14 +81,24 @@ impl crate::PowerSupply for Channel {
 
 #[cfg(test)]
 mod tests {
-    use crate::PowerSupply;
-
     use super::*;
+    use std::ffi::CString;
+    use visa_rs::{flags::AccessMode, DefaultRM, TIMEOUT_IMMEDIATE};
 
     #[test]
     fn it_works() {
-        let mut psu_a = N6702a::new();
-        psu_a.channels[0].set_voltage(1.0);
-        assert_eq!(psu_a.channels[0].get_voltage(), 1.0);
+        let rm = DefaultRM::new().unwrap(); //open default resource manager
+        let expr = CString::new("?*KEYSIGH?*INSTR").unwrap().into(); //expr used to match resource name
+        let rsc = rm.find_res(&expr).unwrap(); // find the first resource matched
+        let instr = rm
+            .open(&rsc, AccessMode::NO_LOCK, TIMEOUT_IMMEDIATE)
+            .unwrap();
+
+        let mut n6702a = N6702a::new(instr);
+
+        assert_eq!(
+            n6702a.get_identification(),
+            "Keysight Technologies,N6702C,MY56004610,E.02.07.3231"
+        );
     }
 }

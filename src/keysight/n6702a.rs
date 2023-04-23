@@ -1,4 +1,6 @@
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
+
+use visa_rs::DefaultRM;
 
 /// A Keysight N6702A power supply
 pub struct N6702a {
@@ -28,10 +30,12 @@ pub struct Channel {
     pub current: f64,
     /// Whether the channel's output is currently enabled.
     pub output: bool,
+    /// Instrument driver
+    pub instrument: visa_rs::Instrument,
 }
 
 impl N6702a {
-    pub fn new(instrument: visa_rs::Instrument) -> N6702a {
+    pub fn new(resource: &str, resource_manager: &DefaultRM) -> N6702a {
         let mut channels = Vec::new();
         for i in 1..=4 {
             channels.push(Channel {
@@ -39,12 +43,29 @@ impl N6702a {
                 voltage: 0.0,
                 current: 0.0,
                 output: false,
+                instrument: resource_manager
+                    .open(
+                        &resource_manager
+                            .find_res(&std::ffi::CString::new(resource).unwrap().into())
+                            .unwrap(),
+                        visa_rs::flags::AccessMode::NO_LOCK,
+                        visa_rs::TIMEOUT_IMMEDIATE,
+                    )
+                    .unwrap(),
             });
         }
         N6702a {
             channels,
             status: Status::Off,
-            instrument,
+            instrument: resource_manager
+                .open(
+                    &resource_manager
+                        .find_res(&std::ffi::CString::new(resource).unwrap().into())
+                        .unwrap(),
+                    visa_rs::flags::AccessMode::NO_LOCK,
+                    visa_rs::TIMEOUT_IMMEDIATE,
+                )
+                .unwrap(),
         }
     }
     pub fn get_identification(&mut self) -> String {
@@ -83,20 +104,12 @@ impl crate::PowerSupply for Channel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
-    use visa_rs::{flags::AccessMode, DefaultRM, TIMEOUT_IMMEDIATE};
+    use visa_rs::DefaultRM;
 
     #[test]
     fn it_works() {
-        let rm = DefaultRM::new().unwrap(); //open default resource manager
-        let expr = CString::new("TCPIP0?*INSTR").unwrap().into(); //expr used to match resource name
-        let rsc = rm.find_res(&expr).unwrap(); // find the first resource matched
-        let instr = rm
-            .open(&rsc, AccessMode::NO_LOCK, TIMEOUT_IMMEDIATE)
-            .unwrap();
-
-        let mut n6702a = N6702a::new(instr);
-
+        let rm = DefaultRM::new().unwrap();
+        let mut n6702a = N6702a::new("TCPIP0?*INSTR", &rm);
         assert_eq!(
             n6702a.get_identification(),
             "Keysight Technologies,N6702C,MY56004610,E.02.07.3231\n"

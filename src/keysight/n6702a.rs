@@ -51,7 +51,8 @@ impl N6702a {
         self.instrument.write_all(b"*IDN?").unwrap();
         let mut buf_reader = BufReader::new(&self.instrument);
         let mut buf = String::new();
-        buf_reader.read_line(&mut buf).unwrap().to_string()
+        buf_reader.read_line(&mut buf).unwrap().to_string();
+        buf
     }
 }
 
@@ -88,7 +89,7 @@ mod tests {
     #[test]
     fn it_works() {
         let rm = DefaultRM::new().unwrap(); //open default resource manager
-        let expr = CString::new("?*KEYSIGH?*INSTR").unwrap().into(); //expr used to match resource name
+        let expr = CString::new("TCPIP0?*INSTR").unwrap().into(); //expr used to match resource name
         let rsc = rm.find_res(&expr).unwrap(); // find the first resource matched
         let instr = rm
             .open(&rsc, AccessMode::NO_LOCK, TIMEOUT_IMMEDIATE)
@@ -98,7 +99,7 @@ mod tests {
 
         assert_eq!(
             n6702a.get_identification(),
-            "Keysight Technologies,N6702C,MY56004610,E.02.07.3231"
+            "Keysight Technologies,N6702C,MY56004610,E.02.07.3231\n"
         );
     }
 }
